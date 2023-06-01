@@ -6,6 +6,14 @@ import pandas as pd
 import pickle
 import sklearn
 import spacy
+import firebase_admin
+from firebase_admin import credentials
+from firebase_admin import firestore
+
+cred = credentials.Certificate("serviceAccountKey.json")
+firebase_admin.initialize_app(cred)
+
+db = firestore.client()
 
 app = Flask(__name__)
 CORS(app)
@@ -17,12 +25,42 @@ with open("svm_news_classifier.pkl", "rb") as f:
 
 nlp = spacy.load("en_core_web_lg")
 
-df = pd.read_csv("coordinated_dataset.csv")
+# df = pd.read_csv("coordinated_dataset.csv")
+
+# coordinates = (
+#     df["coordinates"]
+#     .str.replace("(", "")
+#     .str.replace(")", "")
+#     .str.split(",", expand=True)
+#     .astype(float)
+# )
+
+# coordinates.rename(columns={0: "lon", 1: "lat"}, inplace=True)
+
+docs = db.collection("avoid_coordinates").get()
+
+avoid_coordinates = []
+
+for doc in docs:
+    coord = doc.to_dict()
+    avoid_coordinates.append([coord["lon"], coord["lat"]])
+
+print(avoid_coordinates)
 
 
 @app.route("/iframe", methods=["POST"])
 def iframe():
     request.get_json(force=True)
+
+    docs = db.collection("avoid_coordinates").get()
+
+    avoid_coordinates = []
+
+    for doc in docs:
+        coord = doc.to_dict()
+        avoid_coordinates.append([coord["lon"], coord["lat"]])
+
+    print(avoid_coordinates)
 
     if request.json["pickup"] and request.json["dropoff"]:
         m = folium.Map(
@@ -42,31 +80,21 @@ def iframe():
 
         folium.Marker(
             [request.json["pickup"][1], request.json["pickup"][0]],
-            popup="<i>Mt. Hood Meadows</i>",
+            popup="",
             tooltip=tooltip,
         ).add_to(m)
 
         folium.Marker(
             [request.json["dropoff"][1], request.json["dropoff"][0]],
-            popup="<i>Mt. Hood Meadows</i>",
+            popup="",
             tooltip=tooltip,
         ).add_to(m)
 
-        coordinates = (
-            df["coordinates"]
-            .str.replace("(", "")
-            .str.replace(")", "")
-            .str.split(",", expand=True)
-            .astype(float)
-        )
-
-        coordinates.rename(columns={0: "lon", 1: "lat"}, inplace=True)
-
-        for index, row in coordinates.iterrows():
+        for row in avoid_coordinates:
             folium.Marker(
-                [row["lon"], row["lat"]],
-                popup="<i>Mt. Hood Meadows</i>",
-                tooltip=tooltip,
+                [row[0], row[1]],
+                popup="",
+                tooltip="{},{}".format(row[0], row[1]),
                 icon=folium.Icon(color="red"),
             ).add_to(m)
 
@@ -84,20 +112,11 @@ def iframe():
 
     tooltip = "Click me!"
 
-    coordinates = (
-        df["coordinates"]
-        .str.replace("(", "")
-        .str.replace(")", "")
-        .str.split(",", expand=True)
-        .astype(float)
-    )
-    coordinates.rename(columns={0: "lon", 1: "lat"}, inplace=True)
-
-    for index, row in coordinates.iterrows():
+    for row in avoid_coordinates:
         folium.Marker(
-            [row["lon"], row["lat"]],
-            popup="<i>Mt. Hood Meadows</i>",
-            tooltip=tooltip,
+            [row[0], row[1]],
+            popup="",
+            tooltip="{},{}".format(row[0], row[1]),
             icon=folium.Icon(color="red"),
         ).add_to(m)
 
