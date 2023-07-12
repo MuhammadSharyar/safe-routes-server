@@ -60,83 +60,6 @@ for doc in docs:
     avoid_coordinates.append([coord["lon"], coord["lat"]])
 
 
-# @app.route("/iframe", methods=["POST"])
-# def iframe():
-#     request.get_json(force=True)
-
-#     docs = db.collection("avoid_coordinates").get()
-
-#     avoid_coordinates = []
-
-#     for doc in docs:
-#         coord = doc.to_dict()
-#         avoid_coordinates.append([coord["lon"], coord["lat"]])
-
-#     if request.json["pickup"] and request.json["dropoff"]:
-#         m = folium.Map(
-#             location=[51.4898, -0.0882], tiles="CartoDB dark_matter", zoom_start=11
-#         )
-
-#         coordinates = [request.json["pickup"], request.json["dropoff"]]
-
-#         route = client.directions(
-#             coordinates=coordinates,
-#             profile="driving-car",
-#             format="geojson",
-#             validate=False,
-#         )
-
-#         tooltip = "Click me!"
-
-#         folium.Marker(
-#             [request.json["pickup"][1], request.json["pickup"][0]],
-#             popup="",
-#             tooltip=tooltip,
-#         ).add_to(m)
-
-#         folium.Marker(
-#             [request.json["dropoff"][1], request.json["dropoff"][0]],
-#             popup="",
-#             tooltip=tooltip,
-#         ).add_to(m)
-
-#         for row in avoid_coordinates:
-#             folium.Marker(
-#                 [row[0], row[1]],
-#                 popup="",
-#                 tooltip="{},{}".format(row[0], row[1]),
-#                 icon=folium.Icon(color="red"),
-#             ).add_to(m)
-
-#         folium.PolyLine(
-#             locations=[
-#                 list(reversed(coord))
-#                 for coord in route["features"][0]["geometry"]["coordinates"]
-#             ]
-#         ).add_to(m)
-
-#     else:
-#         m = folium.Map(
-#             location=[51.4898, -0.0882], tiles="CartoDB dark_matter", zoom_start=11
-#         )
-
-#     tooltip = "Click me!"
-
-#     for row in avoid_coordinates:
-#         folium.Marker(
-#             [row[0], row[1]],
-#             popup="",
-#             tooltip="{},{}".format(row[0], row[1]),
-#             icon=folium.Icon(color="red"),
-#         ).add_to(m)
-
-#     m.get_root().width = "100%"
-#     m.get_root().height = "100%"
-#     iframe = m.get_root()._repr_html_()
-
-#     return iframe
-
-
 @app.route("/classify-news", methods=["POST"])
 async def classify_news():
     request.get_json(force=True)
@@ -165,7 +88,7 @@ async def classify_news():
     return str(resp)
 
 
-# Function to create buffer around tweet point geometries and transform it to the needed coordinate system (WGS84)
+# Function to create buffer around area point geometries and transform it to the needed coordinate system (WGS84)
 def CreateBufferPolygon(point_in, resolution=2, radius=20):
     sr_wgs = pyproj.Proj(init="epsg:4326")  # WGS84
     sr_utm = pyproj.Proj(init="epsg:32632")  # UTM32N
@@ -225,7 +148,7 @@ def iframe():
     request.get_json(force=True)
 
     m = folium.Map(
-        tiles="CartoDB dark_matter", location=([51.4898, -0.0882]), zoom_start=11
+        tiles="CartoDB dark_matter", location=([33.6941, 73.0653]), zoom_start=11
     )
 
     docs = db.collection("avoid_coordinates").get()
@@ -237,28 +160,29 @@ def iframe():
         coord = doc.to_dict()
         temp_coords.append([coord["lon"], coord["lat"]])
 
+    # avoid_coordinates = temp_coords[-15:]
     avoid_coordinates = temp_coords
 
     # print(avoid_coordinates)
 
     if request.json["pickup"] and request.json["dropoff"]:
-        flood_tweets = []
-        tweet_geometry = []
+        crime_areas = []
+        area_geometry = []
         for data in avoid_coordinates:
             folium.Marker([data[0], data[1]], icon=folium.Icon(color="red")).add_to(m)
 
-            flood_tweet = CreateBufferPolygon(
+            crime_area = CreateBufferPolygon(
                 [data[1], data[0]], resolution=5, radius=40
             )
-            flood_tweets.append(flood_tweet)
+            crime_areas.append(crime_area)
 
-            poly = Polygon(flood_tweet)
-            tweet_geometry.append(poly)
+            poly = Polygon(crime_area)
+            area_geometry.append(poly)
 
-        union_poly = mapping(cascaded_union(tweet_geometry))
+        union_poly = mapping(cascaded_union(area_geometry))
         folium.features.GeoJson(
             data=union_poly,
-            name="Flood affected areas",
+            name="Crime affected areas",
             style_function=style_function("#ffd699"),
         ).add_to(m)
 
@@ -270,7 +194,7 @@ def iframe():
             folium.map.Marker(list(reversed(coord))).add_to(m)
 
         # Regular Route
-        avoided_point_list = []  # Create empty list with avoided tweets
+        avoided_point_list = []
         route_directions = CreateRoute(
             avoided_point_list, coordinates
         )  # Create regular route with still empty avoided_point_list
@@ -283,12 +207,10 @@ def iframe():
         ).add_to(m)
         print("Generated regular route.")
 
-        # Avoiding tweets route
         dilated_route = CreateBuffer(route_directions)  # Create buffer around route
 
-        # Check if flood affected tweet is located on route
         try:
-            for site_poly in flood_tweets:
+            for site_poly in crime_areas:
                 poly = Polygon(site_poly)
                 if poly.within(dilated_route):
                     avoided_point_list.append(poly)
@@ -312,68 +234,27 @@ def iframe():
         m.add_child(folium.map.LayerControl())
     else:
         m = folium.Map(
-            location=[51.4898, -0.0882], tiles="CartoDB dark_matter", zoom_start=11
+            location=[33.6941, 73.0653], tiles="CartoDB dark_matter", zoom_start=11
         )
+        crime_areas = []
+        area_geometry = []
+        for data in avoid_coordinates:
+            folium.Marker([data[0], data[1]], icon=folium.Icon(color="red")).add_to(m)
 
-    ###############################################################################################
+            crime_area = CreateBufferPolygon(
+                [data[1], data[0]], resolution=5, radius=40
+            )
+            crime_areas.append(crime_area)
 
-    # if request.json["pickup"] and request.json["dropoff"]:
-    #     m = folium.Map(
-    #         location=[51.4898, -0.0882], tiles="CartoDB dark_matter", zoom_start=11
-    #     )
+            poly = Polygon(crime_area)
+            area_geometry.append(poly)
 
-    #     coordinates = [request.json["pickup"], request.json["dropoff"]]
-
-    #     route = client.directions(
-    #         coordinates=coordinates,
-    #         profile="driving-car",
-    #         format="geojson",
-    #         validate=False,
-    #     )
-
-    #     tooltip = "Click me!"
-
-    #     folium.Marker(
-    #         [request.json["pickup"][1], request.json["pickup"][0]],
-    #         popup="",
-    #         tooltip=tooltip,
-    #     ).add_to(m)
-
-    #     folium.Marker(
-    #         [request.json["dropoff"][1], request.json["dropoff"][0]],
-    #         popup="",
-    #         tooltip=tooltip,
-    #     ).add_to(m)
-
-    #     for row in avoid_coordinates:
-    #         folium.Marker(
-    #             [row[0], row[1]],
-    #             popup="",
-    #             tooltip="{},{}".format(row[0], row[1]),
-    #             icon=folium.Icon(color="red"),
-    #         ).add_to(m)
-
-    #     folium.PolyLine(
-    #         locations=[
-    #             list(reversed(coord))
-    #             for coord in route["features"][0]["geometry"]["coordinates"]
-    #         ]
-    #     ).add_to(m)
-
-    # else:
-    #     m = folium.Map(
-    #         location=[51.4898, -0.0882], tiles="CartoDB dark_matter", zoom_start=11
-    #     )
-
-    # tooltip = "Click me!"
-
-    # for row in avoid_coordinates:
-    #     folium.Marker(
-    #         [row[0], row[1]],
-    #         popup="",
-    #         tooltip="{},{}".format(row[0], row[1]),
-    #         icon=folium.Icon(color="red"),
-    #     ).add_to(m)
+        union_poly = mapping(cascaded_union(area_geometry))
+        folium.features.GeoJson(
+            data=union_poly,
+            name="Crime affected areas",
+            style_function=style_function("#ffd699"),
+        ).add_to(m)
 
     m.get_root().width = "100%"
     m.get_root().height = "100%"
@@ -383,4 +264,4 @@ def iframe():
 
 
 if __name__ == "__main__":
-    app.run(debug=True)
+    app.run(port=int("5000"), debug=True)
